@@ -8,7 +8,7 @@ import importlib
 # pylint: disable=import-error
 import tensorflow as tf
 
-from tensorflow.contrib.signal import stft, inverse_stft, hann_window
+from tensorflow.signal import stft, inverse_stft, hann_window
 # pylint: enable=import-error
 
 from ..utils.tensor import pad_and_partition, pad_and_reshape
@@ -141,22 +141,22 @@ class EstimatorSpecBuilder(object):
         loss_type = self._params.get('loss_type', self.L1_MASK)
         if loss_type == self.L1_MASK:
             losses = {
-                name: tf.reduce_mean(tf.abs(output - labels[name]))
+                name: tf.reduce_mean(input_tensor=tf.abs(output - labels[name]))
                 for name, output in output_dict.items()
             }
         elif loss_type == self.WEIGHTED_L1_MASK:
             losses = {
                 name: tf.reduce_mean(
-                    tf.reduce_mean(
-                        labels[name],
+                    input_tensor=tf.reduce_mean(
+                        input_tensor=labels[name],
                         axis=[1, 2, 3],
-                        keep_dims=True) *
+                        keepdims=True) *
                     tf.abs(output - labels[name]))
                 for name, output in output_dict.items()
             }
         else:
             raise ValueError(f"Unkwnown loss type: {loss_type}")
-        loss = tf.reduce_sum(list(losses.values()))
+        loss = tf.reduce_sum(input_tensor=list(losses.values()))
         # Add metrics for monitoring each instrument.
         metrics = {k: tf.compat.v1.metrics.mean(v) for k, v in losses.items()}
         metrics['absolute_difference'] = tf.compat.v1.metrics.mean(loss)
@@ -182,8 +182,8 @@ class EstimatorSpecBuilder(object):
          with the right length to feed the network.
         """
         stft_feature = tf.transpose(
-            stft(
-                tf.transpose(self._features['waveform']),
+            a=stft(
+                tf.transpose(a=self._features['waveform']),
                 self._frame_length,
                 self._frame_step,
                 window_fn=lambda frame_length, dtype: (
@@ -201,14 +201,14 @@ class EstimatorSpecBuilder(object):
         :returns: inverse STFT (waveform)
         """
         inversed = inverse_stft(
-            tf.transpose(stft, perm=[2, 0, 1]),
+            tf.transpose(a=stft, perm=[2, 0, 1]),
             self._frame_length,
             self._frame_step,
             window_fn=lambda frame_length, dtype: (
                 hann_window(frame_length, periodic=True, dtype=dtype))
         ) * self.WINDOW_COMPENSATION_FACTOR
-        reshaped = tf.transpose(inversed)
-        return reshaped[:tf.shape(self._features['waveform'])[0], :]
+        reshaped = tf.transpose(a=inversed)
+        return reshaped[:tf.shape(input=self._features['waveform'])[0], :]
 
     def _build_mwf_output_waveform(self, output_dict):
         """ Perform separation with multichannel Wiener Filtering using Norbert.
@@ -227,7 +227,7 @@ class EstimatorSpecBuilder(object):
                 pad_and_reshape(
                     output_dict[f'{instrument}_spectrogram'],
                     self._frame_length,
-                    self._F)[:tf.shape(x)[0], ...]
+                    self._F)[:tf.shape(input=x)[0], ...]
                 for instrument in self._instruments
             ],
             axis=3)
@@ -253,11 +253,11 @@ class EstimatorSpecBuilder(object):
         # Extend with average
         # (dispatch according to energy in the processed band)
         if extension == "average":
-            extension_row = tf.reduce_mean(mask, axis=2, keepdims=True)
+            extension_row = tf.reduce_mean(input_tensor=mask, axis=2, keepdims=True)
         # Extend with 0
         # (avoid extension artifacts but not conservative separation)
         elif extension == "zeros":
-            mask_shape = tf.shape(mask)
+            mask_shape = tf.shape(input=mask)
             extension_row = tf.zeros((
                 mask_shape[0],
                 mask_shape[1],
@@ -279,7 +279,7 @@ class EstimatorSpecBuilder(object):
         """
         separation_exponent = self._params['separation_exponent']
         output_sum = tf.reduce_sum(
-            [e ** separation_exponent for e in output_dict.values()],
+            input_tensor=[e ** separation_exponent for e in output_dict.values()],
             axis=0
         ) + self.EPSILON
         output_waveform = {}
@@ -292,7 +292,7 @@ class EstimatorSpecBuilder(object):
             # Extend mask;
             instrument_mask = self._extend_mask(instrument_mask)
             # Stack back mask.
-            old_shape = tf.shape(instrument_mask)
+            old_shape = tf.shape(input=instrument_mask)
             new_shape = tf.concat(
                 [[old_shape[0] * old_shape[1]], old_shape[2:]],
                 axis=0)
@@ -300,7 +300,7 @@ class EstimatorSpecBuilder(object):
             # Remove padded part (for mask having the same size as STFT);
             stft_feature = self._features[f'{self._mix_name}_stft']
             instrument_mask = instrument_mask[
-                :tf.shape(stft_feature)[0], ...]
+                :tf.shape(input=stft_feature)[0], ...]
             # Compute masked STFT and normalize it.
             output_waveform[instrument] = self._inverse_stft(
                 tf.cast(instrument_mask, dtype=tf.complex64) * stft_feature)
